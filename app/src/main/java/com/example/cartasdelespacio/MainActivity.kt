@@ -7,12 +7,13 @@ import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
-import io.github.sceneview.SceneView
-import io.github.sceneview.node.ModelNode
-import io.github.sceneview.math.Position
-import io.github.sceneview.math.Rotation
-import io.github.sceneview.math.Scale
-import io.github.sceneview.math.Direction
+import com.google.ar.sceneform.ux.ArFragment
+import com.google.ar.sceneform.rendering.ModelRenderable
+import com.google.ar.sceneform.AnchorNode
+import com.google.ar.sceneform.math.Vector3
+import com.google.ar.sceneform.rendering.Renderable
+import com.google.ar.sceneform.ux.TransformableNode
+import com.google.ar.core.Anchor
 import org.json.JSONObject
 import java.io.BufferedReader
 import java.io.InputStreamReader
@@ -30,7 +31,7 @@ import androidx.core.content.ContextCompat
 
 // Clase de datos para asociar un ModelNode con su ID de OVNI
 data class UfoData(
-    val node: ModelNode,
+    val node: TransformableNode,
     val ufoId: String
 )
 
@@ -45,16 +46,15 @@ data class StoryState(
 private val MAX_CAPITULOS = 3
 
 class MainActivity : AppCompatActivity() {
-    private lateinit var sceneView: SceneView
+    private lateinit var arFragment: ArFragment
     private lateinit var dialogueText: TextView
     private lateinit var optionsContainer: LinearLayout
     private lateinit var explorationHint: TextView
     private lateinit var dialogueTree: JSONObject
     private var currentNode: String = "inicio"
     private var isDialogueActive = false
-    private var ufoNode: ModelNode? = null
-    private var ufoAnimator: ValueAnimator? = null
-    private var ufoPulseAnimator: ValueAnimator? = null
+    private var ufoNode: TransformableNode? = null
+    private var ufoAnchorNode: AnchorNode? = null
     private var storyState = StoryState()
     private var nextSerieNode: String? = null
     private var nextBlockNode: String? = null
@@ -67,7 +67,7 @@ class MainActivity : AppCompatActivity() {
             setContentView(R.layout.activity_main)
 
             // Inicializar vistas
-            sceneView = findViewById(R.id.sceneView)
+            arFragment = supportFragmentManager.findFragmentById(R.id.arFragment) as ArFragment
             dialogueText = findViewById(R.id.dialogueText)
             optionsContainer = findViewById(R.id.optionsContainer)
             explorationHint = findViewById(R.id.explorationHint)
@@ -81,29 +81,28 @@ class MainActivity : AppCompatActivity() {
             // Validar compatibilidad con ARCore
             if (!isArCoreSupported()) {
                 dialogueText.text = "Este dispositivo no es compatible con Realidad Aumentada (ARCore)."
-                sceneView.visibility = View.GONE
+                arFragment.arSceneView.visibility = View.GONE
                 explorationHint.visibility = View.GONE
                 return
             }
 
-            // Verificar si ARCore está funcionando
-            if (!isArCoreWorking()) {
-                dialogueText.text = "Error al inicializar ARCore. Verifica que tengas permisos de cámara."
-                sceneView.visibility = View.GONE
-                explorationHint.visibility = View.GONE
-                return
-            }
-
-            // Configurar SceneView para detección de superficies y toques
-            setupSceneView()
-            
             // Cargar el árbol de diálogo
             loadDialogueTree()
-            
-            // Coloca el OVNI solo una vez
-            sceneView.postDelayed({
-                placeUfoInEnvironment()
-            }, 2000)
+
+            // Listener para colocar el OVNI al tocar un plano
+            arFragment.setOnTapArPlaneListener { hitResult, plane, motionEvent ->
+                if (ufoNode == null && !waitingForNextBlock) {
+                    placeUfoInEnvironment(hitResult.createAnchor())
+                } else if (waitingForNextBlock && nextBlockNode != null) {
+                    // Elimina el OVNI anterior y coloca uno nuevo para el siguiente bloque
+                    removeUfoFromScene()
+                    placeUfoInEnvironment(hitResult.createAnchor())
+                    currentNode = nextBlockNode!!
+                    isDialogueActive = false
+                    waitingForNextBlock = false
+                    updateDialogue()
+                }
+            }
         } catch (e: Exception) {
             e.printStackTrace()
             dialogueText.text = "Error al inicializar la aplicación. Por favor, reinicia la app."
@@ -153,25 +152,6 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun setupSceneView() {
-        try {
-            sceneView.setOnTouchListener { v, event ->
-                try {
-                    if (event.action == MotionEvent.ACTION_DOWN) {
-                        handleTouch(event.x, event.y)
-                    }
-                    // Deja que SceneView procese el evento también
-                    v.onTouchEvent(event)
-                } catch (e: Exception) {
-                    e.printStackTrace()
-                    false
-                }
-            }
-        } catch (e: Exception) {
-            e.printStackTrace()
-        }
-    }
-
     private fun loadDialogueTree() {
         try {
             val inputStream = assets.open("dialogo.json")
@@ -183,100 +163,60 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun placeUfoInEnvironment() {
+    private fun placeUfoInEnvironment(anchor: Anchor) {
         explorationHint.visibility = View.GONE
-        if (ufoNode == null) {
-            val node = createUfoNode()
-            val randomX = -0.5f + (0.5f - (-0.5f)) * kotlin.random.Random.nextFloat()
-            val randomZ = -1.8f + (-1.2f - (-1.8f)) * kotlin.random.Random.nextFloat()
-            node.position = Position(randomX, 0.2f, randomZ)
-            node.rotation = Rotation(0f, 0f, 0f)
-            sceneView.addChild(node)
-            ufoNode = node
-            animateUfoSmoothly(node)
-            startUfoPulse()
-        }
-        // Al inicio, muestra el primer diálogo
-        currentNode = "bloque1_nodo1"
-        isDialogueActive = false
-        waitingForNextBlock = false
-        dialogueText.text = "Toca el OVNI para comenzar la historia..."
-        optionsContainer.removeAllViews()
-    }
-
-    private fun createUfoNode(): ModelNode {
-        return ModelNode(
-            engine = sceneView.engine,
-            modelGlbFileLocation = "models/cube.glb",
-            scaleUnits = 0.3f,
-            centerOrigin = null
-        )
-    }
-
-    private fun animateUfoSmoothly(ufoNode: ModelNode) {
-        ufoAnimator?.cancel()
-        val originalY = ufoNode.position.y
-        ufoAnimator = ValueAnimator.ofFloat(0f, 1f).apply {
-            duration = 2000
-            repeatMode = ValueAnimator.REVERSE
-            repeatCount = ValueAnimator.INFINITE
-            addUpdateListener { animation ->
-                val value = animation.animatedValue as Float
-                ufoNode.position = Position(ufoNode.position.x, originalY + 0.1f * value, ufoNode.position.z)
+        ModelRenderable.builder()
+            .setSource(this, android.net.Uri.parse("models/cube.glb"))
+            .build()
+            .thenAccept { renderable ->
+                addUfoToScene(anchor, renderable)
             }
-            start()
-        }
+            .exceptionally { throwable ->
+                dialogueText.text = "Error al cargar el modelo 3D."
+                null
+            }
     }
 
-    private fun startUfoPulse() {
-        ufoPulseAnimator?.cancel()
-        ufoNode?.let { node ->
-            val originalScale = node.scale.x
-            ufoPulseAnimator = ValueAnimator.ofFloat(1f, 1.15f, 1f).apply {
-                duration = 1200
-                repeatCount = ValueAnimator.INFINITE
-                addUpdateListener { animation ->
-                    val value = animation.animatedValue as Float
-                    node.scale = Scale(originalScale * value)
-                }
-                start()
+    private fun addUfoToScene(anchor: Anchor, renderable: Renderable) {
+        val anchorNode = AnchorNode(anchor)
+        anchorNode.setParent(arFragment.arSceneView.scene)
+        val node = TransformableNode(arFragment.transformationSystem)
+        node.renderable = renderable
+        node.setParent(anchorNode)
+        node.select()
+        ufoNode = node
+        ufoAnchorNode = anchorNode
+        // Listener para interacción con el OVNI
+        node.setOnTapListener { _, _ ->
+            if (!isDialogueActive) startDialogue()
+            else if (waitingForNextBlock && nextBlockNode != null) {
+                // Permite avanzar al siguiente bloque tocando el OVNI si ya está colocado
+                removeUfoFromScene()
+                // Espera a que el usuario toque un nuevo plano para colocar el OVNI
+                dialogueText.text = "Toca una superficie para continuar la historia..."
             }
         }
-    }
-
-    private fun stopUfoPulse() {
-        ufoPulseAnimator?.cancel()
-        ufoPulseAnimator = null
-        ufoNode?.scale = Scale(0.3f)
-    }
-
-    private fun handleTouch(x: Float, y: Float) {
-        try {
-            Log.d("OVNI_TOUCH", "isDialogueActive=$isDialogueActive, waitingForNextBlock=$waitingForNextBlock, nextBlockNode=$nextBlockNode")
-            if (isDialogueActive && !waitingForNextBlock) return
-            // Solo permitir interacción si el OVNI está presente
-            if (ufoNode != null) {
-                if (waitingForNextBlock && nextBlockNode != null) {
-                    Log.d("OVNI_TOUCH", "Avanzando a siguiente bloque: $nextBlockNode")
-                    // Iniciar siguiente bloque
-                    currentNode = nextBlockNode!!
-                    isDialogueActive = true
-                    waitingForNextBlock = false
-                    updateDialogue()
-                } else if (!waitingForNextBlock) {
-                    Log.d("OVNI_TOUCH", "Iniciando diálogo normal")
-                    startDialogue()
-                }
-            }
-        } catch (e: Exception) {
-            e.printStackTrace()
+        // Mensaje inicial
+        if (!waitingForNextBlock) {
+            currentNode = "bloque1_nodo1"
+            isDialogueActive = false
+            waitingForNextBlock = false
+            dialogueText.text = "Toca el OVNI para comenzar la historia..."
+            optionsContainer.removeAllViews()
         }
+    }
+
+    private fun removeUfoFromScene() {
+        ufoNode?.setParent(null)
+        ufoAnchorNode?.setParent(null)
+        ufoNode = null
+        ufoAnchorNode = null
     }
 
     private fun startDialogue() {
         try {
             isDialogueActive = true
-            ufoNode?.scale = Scale(0.4f)
+            ufoNode?.localScale = Vector3(0.4f, 0.4f, 0.4f)
             updateDialogue()
         } catch (e: Exception) {
             e.printStackTrace()
@@ -300,8 +240,7 @@ class MainActivity : AppCompatActivity() {
                 if (finalMalo) {
                     isDialogueActive = true
                     // OVNI desaparece para siempre
-                    ufoNode?.let { sceneView.removeChild(it) }
-                    ufoNode = null
+                    removeUfoFromScene()
                     val restartButton = Button(this)
                     restartButton.text = "Reiniciar historia"
                     restartButton.layoutParams = LinearLayout.LayoutParams(
@@ -313,7 +252,7 @@ class MainActivity : AppCompatActivity() {
                     waitingForNextBlock = false
                 } else if (nextBlockNode != null) {
                     // OVNI se reubica y espera a que el usuario lo toque para continuar
-                    moveUfoToNewPosition()
+                    removeUfoFromScene()
                     dialogueText.text = "Explora y vuelve a tocar el OVNI para continuar la historia..."
                     waitingForNextBlock = true
                     isDialogueActive = false
@@ -361,7 +300,7 @@ class MainActivity : AppCompatActivity() {
             isDialogueActive = true
         } else {
             isDialogueActive = false
-            moveUfoToNewPosition()
+            removeUfoFromScene() // Elimina el OVNI actual si no es final
         }
     }
 
@@ -390,7 +329,7 @@ class MainActivity : AppCompatActivity() {
     private fun closeDialogue() {
         try {
             isDialogueActive = false
-            ufoNode?.scale = Scale(0.3f)
+            ufoNode?.localScale = Vector3(0.3f, 0.3f, 0.3f)
             dialogueText.text = "Toca el OVNI para continuar la historia..."
             optionsContainer.removeAllViews()
             explorationHint.visibility = View.VISIBLE
@@ -402,8 +341,7 @@ class MainActivity : AppCompatActivity() {
 
     override fun onDestroy() {
         super.onDestroy()
-        ufoAnimator?.cancel()
-        ufoPulseAnimator?.cancel()
+        // No hay animadores para cancelar, ya que no se usan ModelNode
     }
 
     // Reinicia la historia
@@ -413,7 +351,7 @@ class MainActivity : AppCompatActivity() {
         isDialogueActive = false
         waitingForNextBlock = false
         if (ufoNode == null) {
-            placeUfoInEnvironment()
+            // No hay OVNI para colocar, solo reiniciar el estado
         } else {
             updateDialogue()
         }
@@ -434,7 +372,7 @@ class MainActivity : AppCompatActivity() {
         ufoNode?.let { node ->
             val randomX = -0.5f + (0.5f - (-0.5f)) * kotlin.random.Random.nextFloat()
             val randomZ = -1.8f + (-1.2f - (-1.8f)) * kotlin.random.Random.nextFloat()
-            node.position = Position(randomX, 0.2f, randomZ)
+            node.localPosition = Vector3(randomX, 0.2f, randomZ)
         }
     }
 }

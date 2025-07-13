@@ -57,6 +57,7 @@ dependencies {
     debugImplementation(libs.androidx.ui.tooling)
     debugImplementation(libs.androidx.ui.test.manifest)
     implementation(libs.arcore)
-    implementation(libs.sceneview)
     implementation(libs.androidx.appcompat)
+    implementation("com.gorisse.thomas.sceneform:sceneform:1.21.0")
+    implementation("com.google.ar:core:1.41.0")
 }
