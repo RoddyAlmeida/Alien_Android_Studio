@@ -23,6 +23,10 @@ import android.animation.ValueAnimator
 import com.google.ar.core.ArCoreApk
 import org.json.JSONArray
 import android.util.Log
+import android.Manifest
+import android.content.pm.PackageManager
+import androidx.core.app.ActivityCompat
+import androidx.core.content.ContextCompat
 
 // Clase de datos para asociar un ModelNode con su ID de OVNI
 data class UfoData(
@@ -55,6 +59,7 @@ class MainActivity : AppCompatActivity() {
     private var nextSerieNode: String? = null
     private var nextBlockNode: String? = null
     private var waitingForNextBlock = false
+    private val CAMERA_PERMISSION_REQUEST = 100
 
     override fun onCreate(savedInstanceState: Bundle?) {
         try {
@@ -67,9 +72,23 @@ class MainActivity : AppCompatActivity() {
             optionsContainer = findViewById(R.id.optionsContainer)
             explorationHint = findViewById(R.id.explorationHint)
 
+            // Verificar permisos de cámara
+            if (!checkCameraPermissions()) {
+                requestCameraPermissions()
+                return
+            }
+
             // Validar compatibilidad con ARCore
             if (!isArCoreSupported()) {
                 dialogueText.text = "Este dispositivo no es compatible con Realidad Aumentada (ARCore)."
+                sceneView.visibility = View.GONE
+                explorationHint.visibility = View.GONE
+                return
+            }
+
+            // Verificar si ARCore está funcionando
+            if (!isArCoreWorking()) {
+                dialogueText.text = "Error al inicializar ARCore. Verifica que tengas permisos de cámara."
                 sceneView.visibility = View.GONE
                 explorationHint.visibility = View.GONE
                 return
@@ -91,11 +110,45 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private fun checkCameraPermissions(): Boolean {
+        return ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED
+    }
+
+    private fun requestCameraPermissions() {
+        ActivityCompat.requestPermissions(this, arrayOf(Manifest.permission.CAMERA), CAMERA_PERMISSION_REQUEST)
+        dialogueText.text = "Esta app necesita permisos de cámara para funcionar. Por favor, otorga los permisos."
+    }
+
+    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        when (requestCode) {
+            CAMERA_PERMISSION_REQUEST -> {
+                if (grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+                    // Permisos otorgados, reiniciar la app
+                    recreate()
+                } else {
+                    dialogueText.text = "Sin permisos de cámara, la app no puede funcionar. Por favor, otorga los permisos en Configuración."
+                }
+            }
+        }
+    }
+
     private fun isArCoreSupported(): Boolean {
         return try {
             val availability = ArCoreApk.getInstance().checkAvailability(this)
             availability.isSupported
         } catch (e: Exception) {
+            Log.e("ARCore", "Error checking ARCore availability", e)
+            false
+        }
+    }
+
+    private fun isArCoreWorking(): Boolean {
+        return try {
+            val session = ArCoreApk.getInstance().requestInstall(this, true)
+            session == ArCoreApk.InstallStatus.INSTALLED
+        } catch (e: Exception) {
+            Log.e("ARCore", "Error checking ARCore installation", e)
             false
         }
     }
