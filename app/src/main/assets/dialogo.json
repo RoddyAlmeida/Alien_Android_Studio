@@ -1,0 +1,74 @@
+{
+  "bloque1_nodo1": {
+    "texto": "¡Hola! Soy Zhur, mi nave está averiada. ¿Me ayudas a repararla?",
+    "opciones": [
+      {"texto": "Sí, te ayudo", "siguiente": "bloque1_final_confianza"},
+      {"texto": "No, no puedo", "siguiente": "bloque1_nodo2_noayuda"}
+    ]
+  },
+  "bloque1_nodo2_noayuda": {
+    "texto": "¿Por qué no puedes ayudarme?",
+    "opciones": [
+      {"texto": "No confío en ti", "siguiente": "bloque1_nodo3_ganar_confianza"},
+      {"texto": "Tengo miedo", "siguiente": "bloque1_nodo3_ganar_confianza"}
+    ]
+  },
+  "bloque1_nodo3_ganar_confianza": {
+    "texto": "Entiendo... ¿Qué puedo hacer para ganarme tu confianza?",
+    "opciones": [
+      {"texto": "Cuéntame sobre ti", "siguiente": "bloque1_nodo4_cuento"},
+      {"texto": "Hazme reír", "siguiente": "bloque1_nodo4_broma"}
+    ]
+  },
+  "bloque1_nodo4_cuento": {
+    "texto": "Vengo de un planeta lejano y busco amigos. ¿Ahora me ayudas a reparar mi nave?",
+    "opciones": [
+      {"texto": "Sí, te ayudo", "siguiente": "bloque1_final_confianza"},
+      {"texto": "No, aún no", "siguiente": "bloque1_final_no_confianza"}
+    ]
+  },
+  "bloque1_nodo4_broma": {
+    "texto": "¿Por qué el ovni cruzó la galaxia? ¡Para llegar a tu planeta! ¿Ahora me ayudas a reparar mi nave?",
+    "opciones": [
+      {"texto": "Sí, te ayudo", "siguiente": "bloque1_final_confianza"},
+      {"texto": "No, aún no", "siguiente": "bloque1_final_no_confianza"}
+    ]
+  },
+  "bloque1_final_confianza": {
+    "texto": "¡Gracias! Has ganado la confianza de Zhur. FIN DEL BLOQUE 1.",
+    "opciones": [],
+    "finalMalo": false,
+    "siguienteBloque": "bloque2_nodo1"
+  },
+  "bloque1_final_no_confianza": {
+    "texto": "Zhur se entristece, pero no se rinde. FIN DEL BLOQUE 1.",
+    "opciones": [],
+    "finalMalo": false,
+    "siguienteBloque": "bloque2_nodo1"
+  },
+
+  "bloque2_nodo1": {
+    "texto": "Zhur: ¿Me ayudas a buscar una señal para volver a casa?",
+    "opciones": [
+      {"texto": "Sí, vamos a buscar", "siguiente": "bloque2_final_bueno"},
+      {"texto": "No, ya hice suficiente", "siguiente": "bloque2_nodo2_insiste"}
+    ]
+  },
+  "bloque2_nodo2_insiste": {
+    "texto": "Por favor, realmente necesito tu ayuda para volver a mi planeta. ¿Me ayudas ahora?",
+    "opciones": [
+      {"texto": "Está bien, te ayudo", "siguiente": "bloque2_final_bueno"},
+      {"texto": "No, no quiero", "siguiente": "bloque2_final_malo"}
+    ]
+  },
+  "bloque2_final_bueno": {
+    "texto": "¡Juntos encuentran la señal y Zhur puede regresar a casa! FIN FELIZ.",
+    "opciones": [],
+    "finalMalo": false
+  },
+  "bloque2_final_malo": {
+    "texto": "Zhur se va para siempre, decepcionado. FIN TRISTE.",
+    "opciones": [],
+    "finalMalo": true
+  }
+} 
